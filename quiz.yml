@@ -1,0 +1,97 @@
+---
+- name : INT493 Infrastructure as Code – Quiz 1
+  hosts: serverx
+  gather_facts: false
+  remote_user: root
+
+  tasks:
+   - name: install packages
+     yum:
+      name: 
+       - httpd
+       - mariadb
+       - mariadb-server
+       - php
+       - php-common
+       - php-mysql
+       - php-gd
+       - php-xml
+       - php-mbstring
+       - php-mcrypt
+       - php-xmlrpc
+       - unzip
+       - wget
+      state: present
+
+   - name: start HTTPD
+     service: 
+      name: httpd
+      state: started
+      enabled: yes
+
+   - name: start MariaDB
+     service:
+      name: mariadb
+      state: started
+      enabled: true
+
+   - name: firewall allow http and start
+     firewalld:
+      service: http
+      permanent: yes
+      immediate: yes
+      state: enabled
+
+   - name: sql
+     command: echo "{{ item }}" | mysql -u root -p "abc"
+     loop:
+      - "DELETE FROM mysql.user WHERE User='';"
+      - "DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost','127.0.0.1', '::1');"
+      - "DROP DATABASE test;"
+      - "DELETE FROM mysql.db WHERE Db='test' OR Db='test\_%';"
+      - "FLUSH PRIVILEGES;"
+      - "CREATE DATABASE wordpress"
+      - "GRANT ALL PRIVILEGES on wordpress.* to 'ansible'@'localhost' identified by 'mypassword';"
+      - "FLUSH PRIVILEGES;"
+
+   - name: Download file wordpress
+     get_url:
+      url: https://wordpress.org/wordpress-5.0.tar.gz
+      dest: /root
+
+   - name: Extract wordpress-5.0.tar.gz to /var/www/html/
+     unarchive:
+      src: /root/wordpress-5.0.tar.gz
+      dest: /var/www/html/
+      remote_src: yes
+
+   - name: Change file ownership, group and permissions
+     file:
+      path: /var/www/html/wordpress
+      owner: apache
+      group: apache
+      mode: '755'
+
+   - name: Create uploads directory and set group name
+     file:
+      path: /var/www/html/wordpress/wp-content/uploads
+      state: directory
+      group: apache
+
+   - name: rename
+     copy: 
+      src: /var/www/html/wordpress/wp-config-sample.php
+      dest: /var/www/html/wordpress/wp-config.php
+      remote_src: yes
+
+   - name: Update WordPress config file
+     lineinfile:
+      dest=/var/www/html/wordpress/wp-config.php
+      regexp="{{ item.regexp }}"
+      line="{{ item.line }}"
+     with_items:
+      - {'regexp': "define\\('DB_NAME', '(.)+'\\);", 'line': "define('DB_NAME', 'wordpress');"}
+      - {'regexp': "define\\('DB_USER', '(.)+'\\);", 'line': "define('DB_USER', 'ansible');"}
+      - {'regexp': "define\\('DB_PASSWORD', '(.)+'\\);", 'line': "define('DB_PASSWORD', 'mypassword');"}
+      - {'regexp': "define\\('DB_HOST', '(.)+'\\);", 'line': "define('DB_PASSWORD', 'localhost');"}
+     become: yes
